@@ -1560,17 +1560,16 @@ ENTRY MyModule {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
   SetCopyToHostSpeed(4.0 * 1024);
   SetCopyFromHostSpeed(4.0 * 1024);
   SetFlopsPerSecond(2 * 1024);
   SetTranscendentalsPerSecond(2 * 1024);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/10 * 1024, module.get()));
+  ASSERT_OK_AND_ASSIGN(bool changed,
+                       RunHloRematerialization(
+                           /*memory_limit_bytes=*/10 * 1024, module.get()));
   ASSERT_TRUE(changed);
   ASSERT_TRUE(module->has_schedule());
 
