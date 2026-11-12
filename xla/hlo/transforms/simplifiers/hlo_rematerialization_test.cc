@@ -1533,10 +1533,8 @@ ENTRY MyModule {
               op::Tanh(res_10_matcher));
 }
 
-// The only HLO user of res_3 is an async-start that is already placed when
-// res_3 becomes an offload candidate; the buffer is read later through the
-// async-done. Host offload has no direct user to place the copy back before,
-// so it must skip the candidate instead of crashing.
+// res_3 is only used by an already placed async-start, so host offload must
+// skip it instead of crashing.
 TEST_F(OffloadingRematerializationTest, SkipOffloadWhenOnlyUserIsAsyncStart) {
   const std::string& hlo_string = R"(
 HloModule MyModule, is_scheduled=true, entry_computation_layout={(f32[1024]{0}, f32[1024]{0})->f32[1024]{0}}
@@ -1576,8 +1574,7 @@ ENTRY MyModule {
   ASSERT_TRUE(changed);
   ASSERT_TRUE(module->has_schedule());
 
-  // res_3 is skipped and still feeds the async-start directly; res_4 is
-  // offloaded instead.
+  // res_3 is skipped; res_4 is offloaded instead.
   auto res_3_matcher = op::Add(op::Parameter(), op::Parameter());
   auto res_4_matcher = op::Tanh(op::Parameter());
   auto res_4_rematted_matcher = op::AsyncCopy(

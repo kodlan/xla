@@ -1852,11 +1852,8 @@ std::optional<int64_t> MemoryUsageTracker::GetCostOfHostOffload(
   }
 
   const Buffer& output_buffer = buffers_.at(candidate_item->buffers_output[0]);
-  // OffloadInstruction places the copy back to device before the first
-  // unplaced direct user of the candidate. A buffer that is also read through
-  // another instruction's output (e.g. an async-done reading an operand
-  // forwarded by its async-start) can have unplaced uses without any unplaced
-  // direct user, so skip it, as the recompute strategy does.
+  // The copy back to device is placed before a direct user, so indirect uses
+  // (e.g. through an async-start) cannot be handled.
   if (output_buffer.has_indirect_uses) {
     VLOG(2) << "  " << candidate_instruction->name()
             << " has indirect uses; cannot offload to host.";
