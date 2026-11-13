@@ -391,6 +391,20 @@ bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo) {
   }
 }
 
+bool IsElementwiseOpExactInYnn(const HloInstruction* hlo) {
+  auto is_int8 = [](const HloInstruction* instr) {
+    PrimitiveType type = instr->shape().element_type();
+    return type == S8 || type == U8;
+  };
+  if (!is_int8(hlo) || !absl::c_all_of(hlo->operands(), is_int8)) {
+    return true;
+  }
+  // The result of these ops is always an integer in range.
+  return hlo->opcode() == HloOpcode::kMaximum ||
+         hlo->opcode() == HloOpcode::kMinimum ||
+         hlo->opcode() == HloOpcode::kSign;
+}
+
 absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo) {
   CHECK_EQ(hlo->opcode(), HloOpcode::kDot);
   if (!CheckOperandCount(hlo, 2)) {

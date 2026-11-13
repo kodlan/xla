@@ -107,7 +107,10 @@ class YnnMatcher : public LibraryMatcher {
       return IsConvolutionOpSupportedByYnn(instr);
     }
     if (instr->IsElementwise()) {
-      return IsElementwiseOpSupportedByYnn(instr);
+      // Exactness is checked only here, not in the emitter, so that fusions in
+      // existing AOT artifacts still run.
+      return IsElementwiseOpSupportedByYnn(instr) &&
+             IsElementwiseOpExactInYnn(instr);
     }
     return false;
   }

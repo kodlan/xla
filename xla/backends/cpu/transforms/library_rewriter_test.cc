@@ -696,6 +696,35 @@ TEST_F(CpuLibraryTest, ReduceSquareConvert) {
   RunTestInternal(spec, hlo_template, {HloOpcode::kReduce, 1, 5, true});
 }
 
+TEST_F(CpuLibraryTest, DoNotFuseInt8Arithmetic) {
+  // YNNPACK would saturate the 8-bit add instead of wrapping, so only the
+  // reduce is fused. An 8-bit maximum cannot overflow and is still fused.
+  const absl::string_view hlo_template = R"(
+    HloModule reduce_int8_add
+
+    reducer_max {
+      lhs = u8[] parameter(0)
+      rhs = u8[] parameter(1)
+      ROOT max = u8[] maximum(lhs, rhs)
+    }
+
+    ENTRY main {
+      a = u8[64,64]{1,0} parameter(0)
+      b = u8[64,64]{1,0} parameter(1)
+      sum = u8[64,64]{1,0} $op(a, b)
+      c = u8[] constant(0)
+      ROOT output = u8[64]{0} reduce(sum, c), dimensions={1},
+          to_apply=reducer_max
+    }
+    )";
+  DotRewriteTestSpec spec = GetDefaultTestSpec();
+  spec.fusion_mode = "reduce";
+  RunTestInternal(spec, absl::StrReplaceAll(hlo_template, {{"$op", "add"}}),
+                  {HloOpcode::kReduce, 1, 3, true});
+  RunTestInternal(spec, absl::StrReplaceAll(hlo_template, {{"$op", "maximum"}}),
+                  {HloOpcode::kReduce, 2, 5, true});
+}
+
 TEST_F(CpuLibraryTest, DoNotFuseReduceWithNonTrivialReducer) {
   // The reducer has a side-effecting outfeed next to the add, so it is not the
   // plain `add(p0, p1)` computation that the YNN emitter expects.

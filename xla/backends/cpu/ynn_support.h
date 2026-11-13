@@ -96,6 +96,10 @@ inline void SetConstant(HloInstruction* instruction) {
 // Returns true if the nonconstant elementwise op is supported by YNNPACK.
 bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo);
 
+// Returns false for 8-bit integer ops that YNNPACK computes in fp32 with a
+// saturating, rounding conversion back, where XLA wraps and truncates.
+bool IsElementwiseOpExactInYnn(const HloInstruction* hlo);
+
 // Returns true if the dot operation is supported by YNNPACK. Returns an error
 // if the dot operation shape is invalid.
 absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo);

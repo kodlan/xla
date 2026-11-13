@@ -143,6 +143,46 @@ TEST_F(YnnReduceTest, ReduceWindowWithBaseDilationIsNotFused) {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
+TEST_F(YnnReduceTest, Int8OpsNextToReduceMatchInterpreter) {
+  // YNNPACK would saturate and round these 8-bit integer ops, XLA wraps and
+  // truncates. The minimum is exact either way and stays fused.
+  constexpr absl::string_view kHloTemplate = R"(
+  HloModule int8_ops
+
+  max {
+    lhs = $dtype[] parameter(0)
+    rhs = $dtype[] parameter(1)
+    ROOT max = $dtype[] maximum(lhs, rhs)
+  }
+
+  ENTRY main {
+    a = $dtype[1024,17] parameter(0)
+    b = $dtype[1024,17] parameter(1)
+    c = $dtype[1024,17] parameter(2)
+    d = $other[1024,17] parameter(3)
+    init = $dtype[] constant(0)
+    reduced = $dtype[17] reduce(a, init), dimensions={0}, to_apply=max
+    broadcasted = $dtype[1024,17] broadcast(reduced), dimensions={1}
+    t = $dtype[1024,17] $expr
+    ROOT result = $dtype[1024,17] minimum(t, broadcasted)
+  }
+  )";
+
+  for (absl::string_view dtype : {"s8", "u8"}) {
+    for (absl::string_view expr :
+         {"add(b, c)", "subtract(b, c)", "multiply(b, c)", "divide(b, c)",
+          "power(b, c)", "negate(b)", "convert(d)"}) {
+      SCOPED_TRACE(absl::StrCat(dtype, " ", expr));
+      std::string hlo_text = absl::StrReplaceAll(
+          kHloTemplate, {{"$dtype", dtype},
+                         {"$other", dtype == "s8" ? "u8" : "s8"},
+                         {"$expr", expr}});
+      MatchOptimizedHlo(hlo_text, R"(CHECK: "kind":"__ynn_fusion")");
+      EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+    }
+  }
+}
+
 TEST_F(YnnReduceTest, ReduceReshape) {
   const char* hlo_text = R"(
   HloModule reduce_reshape
