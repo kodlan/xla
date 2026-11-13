@@ -948,6 +948,15 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
   return true;
 }
 
+// Skips instructions that do not create a new buffer, such as bitcasts.
+const HloInstruction* SkipNoOps(const HloInstruction* instruction,
+                                const AliasInfo* alias_info) {
+  while (alias_info->IsNoOpForAliasAnalysis(instruction)) {
+    instruction = instruction->operand(0);
+  }
+  return instruction;
+}
+
 }  // namespace
 
 /*static*/ bool InstructionFusion::IsEmbeddedComputation(
@@ -991,9 +1000,16 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
             "operand that has the same value as the in-place buffer");
       }
     }
-    if (consumer->operand(operand_number) == producer ||
-        absl::c_find(producer->operands(), consumer->operand(operand_number)) !=
-            producer->operands().end()) {
+    const HloInstruction* in_place_operand = consumer->operand(operand_number);
+    // The producer may also read the in-place buffer through no-ops such as
+    // bitcasts, e.g. dus(bitcast(x), slice(x)).
+    const HloInstruction* in_place_buffer =
+        SkipNoOps(in_place_operand, alias_info);
+    if (in_place_operand == producer ||
+        absl::c_any_of(
+            producer->operands(), [&](const HloInstruction* operand) {
+              return SkipNoOps(operand, alias_info) == in_place_buffer;
+            })) {
       VLOG(4) << "Found producer that uses the same operand of "
                  "an in-place consumer";
       auto get_real_operand = [](const HloInstruction* op,
@@ -1078,6 +1094,17 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
       }
       auto dus = dus_ops[0];
       auto producer_nonelementwise = producer_nonelementwise_ops[0];
+      // The index checks below are per dimension, so the slice must read a
+      // tensor with the shape of the one that the DUS updates.
+      if ((producer_nonelementwise->opcode() == HloOpcode::kSlice ||
+           producer_nonelementwise->opcode() == HloOpcode::kDynamicSlice) &&
+          !Shape::Equal().IgnoreElementType()(
+              producer_nonelementwise->operand(0)->shape(),
+              dus->operand(0)->shape())) {
+        return FusionDecision::Forbid(
+            "Slice op reads a different shape than the dus op updates, "
+            "bailing.");
+      }
       if (producer_nonelementwise->opcode() == HloOpcode::kSlice) {
         if (producer_nonelementwise->shape() != dus->operand(1)->shape()) {
           return FusionDecision::Forbid(

@@ -984,6 +984,43 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0, 0}));
 }
 
+TEST_F(CpuGpuFusionTest, DynamicUpdateSliceOfShiftedSliceThroughReshape) {
+  // The update is a shifted slice of the updated operand and the reshape ends
+  // up between that operand and the dynamic-update-slice.
+  const char* const hlo = R"hlo(
+HloModule shifted_slice
+
+ENTRY main {
+  x = s32[4,1,1] parameter(0)
+  one = s32[] constant(1)
+  ones = s32[4,1,1] broadcast(one), dimensions={}
+  add = s32[4,1,1] add(x, ones)
+  slice = s32[3,1,1] slice(add), slice={[0:3], [0:1], [0:1]}
+  zero = s32[] constant(0)
+  dus = s32[4,1,1] dynamic-update-slice(add, slice, one, zero, zero)
+  ROOT reshape = s32[1,4,1] reshape(dus)
+}
+)hlo";
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0, 0}));
+}
+
+TEST_F(CpuGpuFusionTest, DynamicUpdateSliceOfSameShapeSliceThroughReshape) {
+  // The slice and the update have the same shape and start indices, but they
+  // cover different elements of the reshaped buffer.
+  const char* const hlo = R"hlo(
+HloModule same_shape_slice
+
+ENTRY main {
+  x = s32[4,3] parameter(0)
+  base = s32[3,4] reshape(x)
+  slice = s32[3,3] slice(x), slice={[0:3], [0:3]}
+  zero = s32[] constant(0)
+  ROOT dus = s32[3,4] dynamic-update-slice(base, slice, zero, zero)
+}
+)hlo";
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0, 0}));
+}
+
 void BM_ParallelFusion(::testing::benchmark::State& state) {
   // Simple element-wise computation to benchmark parallel task partitioning.
 

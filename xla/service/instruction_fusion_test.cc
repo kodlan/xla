@@ -1188,6 +1188,63 @@ TEST_F(InstructionFusionTest,
   EXPECT_THAT(root, op::Fusion(op::Parameter(), op::Fusion(op::Parameter())));
 }
 
+TEST_F(InstructionFusionTest,
+       InPlaceOpShouldNotFuseWithSliceOfReshapedOperand) {
+  // The slice and the update have the same shape and start indices, but the
+  // slice indexes `p0` and the dynamic-update-slice indexes a bitcast of it.
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+  HloModule test_module
+  ENTRY Test {
+    p0 = s32[4,3] parameter(0)
+    base = s32[3,4] bitcast(p0)
+    slice = s32[3,3] slice(p0), slice={[0:3], [0:3]}
+    zero = s32[] constant(0)
+    ROOT dus = s32[3,4] dynamic-update-slice(base, slice, zero, zero)
+  })hlo"));
+
+  HloInstruction* dus = module->entry_computation()->root_instruction();
+  HloInstruction* slice =
+      module->entry_computation()->GetInstructionWithName("slice");
+  FusionDecision decision = InstructionFusion::ShouldFuseInPlaceOp(
+      slice, dus, &alias_info_, std::nullopt);
+  EXPECT_TRUE(decision.IsForbidden());
+  EXPECT_THAT(decision.Explain(), HasSubstr("reads a different shape"));
+
+  ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                        /*may_duplicate=*/false)
+          .Run(module.get()));
+  EXPECT_TRUE(changed) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion(op::Slice(), op::Parameter()))
+      << module->ToString();
+}
+
+TEST_F(InstructionFusionTest,
+       InPlaceOpShouldNotFuseWithDynamicSliceOfReshapedOperand) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(R"hlo(
+  HloModule test_module
+  ENTRY Test {
+    p0 = s32[6,4] parameter(0)
+    i = s32[] parameter(1)
+    j = s32[] parameter(2)
+    base = s32[4,6] bitcast(p0)
+    ds = s32[3,3] dynamic-slice(p0, i, j), dynamic_slice_sizes={3,3}
+    ROOT dus = s32[4,6] dynamic-update-slice(base, ds, i, j)
+  })hlo"));
+
+  HloInstruction* dus = module->entry_computation()->root_instruction();
+  HloInstruction* ds =
+      module->entry_computation()->GetInstructionWithName("ds");
+  FusionDecision decision = InstructionFusion::ShouldFuseInPlaceOp(
+      ds, dus, &alias_info_, std::nullopt);
+  EXPECT_TRUE(decision.IsForbidden());
+  EXPECT_THAT(decision.Explain(), HasSubstr("reads a different shape"));
+}
+
 TEST_F(InstructionFusionTest, InPlaceOpShouldFuseWithSliceSame64BitIndex) {
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                        ParseAndReturnVerifiedModule(R"hlo(
