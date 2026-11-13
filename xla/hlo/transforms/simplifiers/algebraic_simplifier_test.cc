@@ -12533,6 +12533,24 @@ TEST_F(AlgebraicSimplifierTest, MaxOfClampWithParameterBounds) {
               GmockMatch(m::Maximum(m::Parameter(0), m::Clamp())));
 }
 
+// +0.0 <= -0.0 holds, but maximum(+0.0, -0.0) is +0.0 while the clamp is -0.0.
+TEST_F(AlgebraicSimplifierTest, MaxOfClampWithSignedZeroBounds) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      lower = f32[] constant(0.0)
+      upper = f32[] constant(-0.0)
+      c0 = f32[] clamp(lower, p0, upper)
+      ROOT m0 = f32[] maximum(lower, c0)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Maximum(m::ConstantScalar(0), m::Clamp())));
+}
+
 TEST_F(AlgebraicSimplifierTest, SliceOfConcat) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule m
