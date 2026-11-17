@@ -210,40 +210,28 @@ TEST(IntrinsicLibTest, AtanHasNoLibmCallsAfterInlining) {
 }
 
 TEST(IntrinsicLibTest, Expm1Vectorizations) {
-  IntrinsicOptions options;
-  auto lib = IntrinsicFunctionLib(options);
-  std::vector<llvm::VecDesc> vec_descs = lib.Vectorizations();
-  std::vector<std::string> vec_descs_str;
-  for (const auto& vec_desc : vec_descs) {
-    if (vec_desc.getScalarFnName().starts_with("xla.expm1")) {
-      vec_descs_str.push_back(ToString(vec_desc));
+  for (absl::string_view features : {"", "+avx512f"}) {
+    IntrinsicOptions options;
+    options.features = features;
+    auto lib = IntrinsicFunctionLib(options);
+    std::vector<std::string> vec_descs_str;
+    for (const auto& vec_desc : lib.Vectorizations()) {
+      if (vec_desc.getScalarFnName().starts_with("xla.expm1")) {
+        vec_descs_str.push_back(ToString(vec_desc));
+      }
     }
+
+    EXPECT_THAT(
+        vec_descs_str,
+        UnorderedElementsAre("xla.expm1.f32:xla.expm1.v2f32:2:_ZGV_LLVM_N2v",
+                             "xla.expm1.f32:xla.expm1.v4f32:4:_ZGV_LLVM_N4v",
+                             "xla.expm1.f32:xla.expm1.v8f32:8:_ZGV_LLVM_N8v",
+                             "xla.expm1.f32:xla.expm1.v16f32:16:_ZGV_LLVM_N16v",
+                             "xla.expm1.f64:xla.expm1.v2f64:2:_ZGV_LLVM_N2v",
+                             "xla.expm1.f64:xla.expm1.v4f64:4:_ZGV_LLVM_N4v",
+                             "xla.expm1.f64:xla.expm1.v8f64:8:_ZGV_LLVM_N8v"))
+        << "features: " << features;
   }
-
-  EXPECT_THAT(
-      vec_descs_str,
-      UnorderedElementsAre("xla.expm1.f32:xla.expm1.v4f32:4:_ZGV_LLVM_N4v",
-                           "xla.expm1.f32:xla.expm1.v8f32:8:_ZGV_LLVM_N8v",
-                           "xla.expm1.f64:xla.expm1.v4f64:4:_ZGV_LLVM_N4v"));
-
-  IntrinsicOptions options_avx512;
-  options_avx512.features = "+avx512f";
-  auto lib_avx512 = IntrinsicFunctionLib(options_avx512);
-  std::vector<llvm::VecDesc> vec_descs_512 = lib_avx512.Vectorizations();
-  std::vector<std::string> vec_descs_512_str;
-  for (const auto& vec_desc : vec_descs_512) {
-    if (vec_desc.getScalarFnName().starts_with("xla.expm1")) {
-      vec_descs_512_str.push_back(ToString(vec_desc));
-    }
-  }
-
-  EXPECT_THAT(
-      vec_descs_512_str,
-      UnorderedElementsAre("xla.expm1.f32:xla.expm1.v4f32:4:_ZGV_LLVM_N4v",
-                           "xla.expm1.f32:xla.expm1.v8f32:8:_ZGV_LLVM_N8v",
-                           "xla.expm1.f32:xla.expm1.v16f32:16:_ZGV_LLVM_N16v",
-                           "xla.expm1.f64:xla.expm1.v4f64:4:_ZGV_LLVM_N4v",
-                           "xla.expm1.f64:xla.expm1.v8f64:8:_ZGV_LLVM_N8v"));
 }
 
 // Returns a JIT of a function `kernel` that calls the intrinsic `name` on a
@@ -320,6 +308,13 @@ TEST(IntrinsicLibTest, WideExpDefinitionsMatchScalar) {
     GTEST_SKIP();
   }
   ExpectWideDefinitionsMatchScalar("exp");
+}
+
+TEST(IntrinsicLibTest, WideExpm1DefinitionsMatchScalar) {
+  if (!AreCppGenIntrinsicsAvailable()) {
+    GTEST_SKIP();
+  }
+  ExpectWideDefinitionsMatchScalar("expm1");
 }
 
 TEST(IntrinsicLibTest, SinAndCosVectorizations) {

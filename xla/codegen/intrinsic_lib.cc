@@ -131,6 +131,8 @@ IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
     intrinsic_functions_.push_back(
         std::make_unique<IntrinsicAdapter<intrinsics::YnnExp>>());
     intrinsic_functions_.push_back(
+        std::make_unique<IntrinsicAdapter<intrinsics::YnnExpm1>>());
+    intrinsic_functions_.push_back(
         std::make_unique<IntrinsicAdapter<intrinsics::YnnLog>>());
     intrinsic_functions_.push_back(
         std::make_unique<IntrinsicAdapter<intrinsics::YnnLog1p>>());
@@ -138,8 +140,6 @@ IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
     intrinsic_functions_.push_back(
         std::make_unique<IntrinsicAdapter<intrinsics::Log1p>>());
   }
-  intrinsic_functions_.push_back(
-      std::make_unique<IntrinsicAdapter<intrinsics::Expm1>>());
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::FpTrunc>>());
   intrinsic_functions_.push_back(
